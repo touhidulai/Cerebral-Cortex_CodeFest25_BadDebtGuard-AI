@@ -563,12 +563,19 @@
   border-radius: 0.5rem;
   border: 1px solid #e2e8f0;
   margin-bottom: 0.5rem;
+  transition: all 0.2s;
+}
+
+.doc-item:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
 }
 
 .doc-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex: 1;
 }
 
 .doc-icon {
@@ -578,10 +585,48 @@
 .doc-name {
   font-size: 0.875rem;
   color: #0f172a;
+  font-weight: 500;
+}
+
+.doc-size {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-left: 0.5rem;
+}
+
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .check-icon {
   color: #16a34a;
+}
+
+.delete-doc-button {
+  padding: 0.375rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-doc-button:hover {
+  background: #fee2e2;
+}
+
+.trash-icon {
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.delete-doc-button:hover .trash-icon {
+  color: #dc2626;
 }
 
 /* CCRIS Card */

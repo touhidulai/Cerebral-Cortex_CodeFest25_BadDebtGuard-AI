@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, FileText, Brain, CheckCircle, AlertCircle, TrendingUp, Building2, User, Home, Car, Briefcase, ChevronRight, Shield, Database, Zap } from 'lucide-react';
+import { Upload, FileText, Brain, CheckCircle, AlertCircle, TrendingUp, Building2, User, Home, Car, Briefcase, ChevronRight, Shield, Database, Zap, Trash2 } from 'lucide-react';
 import './App.css';
 
 function App() {
@@ -9,6 +9,7 @@ function App() {
   const [selectedCustomerType, setSelectedCustomerType] = useState('');
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [analysisStatus, setAnalysisStatus] = useState('idle');
+  const [analysisResult, setAnalysisResult] = useState(null);
 
   const bankingSystems = [
     { id: 'conventional', name: 'Conventional Banking', icon: Building2 },
@@ -31,12 +32,57 @@ function App() {
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
-    setUploadedDocs([...uploadedDocs, ...files.map(f => ({ name: f.name, status: 'uploaded', size: f.size }))]);
+    setUploadedDocs([...uploadedDocs, ...files.map((f, index) => ({ 
+      id: Date.now() + index,  // Unique ID for each file
+      name: f.name, 
+      status: 'uploaded', 
+      size: f.size,
+      file: f  // Store the actual File object for FormData
+    }))]);
   };
 
-  const startAnalysis = () => {
+  const handleDeleteFile = (fileId) => {
+    setUploadedDocs(uploadedDocs.filter(doc => doc.id !== fileId));
+  };
+
+  const startAnalysis = async () => {
     setAnalysisStatus('analyzing');
-    setTimeout(() => setAnalysisStatus('complete'), 4500);
+    
+    try {
+      // Prepare form data
+      const formData = new FormData();
+      formData.append('banking_system', selectedBankingSystem);
+      formData.append('loan_type', selectedLoanType);
+      formData.append('customer_type', selectedCustomerType);
+      
+      // Add all uploaded files
+      uploadedDocs.forEach((doc) => {
+        if (doc.file) {
+          formData.append('files', doc.file);
+        }
+      });
+      
+      // Call FastAPI backend
+      const response = await fetch('http://localhost:8000/api/analyze-loan', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Store the analysis result
+      setAnalysisResult(data);
+      setAnalysisStatus('complete');
+      
+    } catch (error) {
+      console.error('Analysis error:', error);
+      setAnalysisStatus('error');
+      alert('Analysis failed. Please make sure the backend server is running on http://localhost:8000');
+    }
   };
 
   return (
@@ -254,13 +300,23 @@ function App() {
                   {uploadedDocs.length > 0 && (
                     <div className="uploaded-docs">
                       <h4 className="uploaded-title">Uploaded Documents ({uploadedDocs.length})</h4>
-                      {uploadedDocs.map((doc, idx) => (
-                        <div key={idx} className="doc-item">
+                      {uploadedDocs.map((doc) => (
+                        <div key={doc.id} className="doc-item">
                           <div className="doc-info">
                             <FileText className="icon-sm doc-icon" />
                             <span className="doc-name">{doc.name}</span>
+                            <span className="doc-size">({(doc.size / 1024).toFixed(1)} KB)</span>
                           </div>
-                          <CheckCircle className="icon-sm check-icon" />
+                          <div className="doc-actions">
+                            <CheckCircle className="icon-sm check-icon" />
+                            <button 
+                              onClick={() => handleDeleteFile(doc.id)}
+                              className="delete-doc-button"
+                              title="Delete file"
+                            >
+                              <Trash2 className="icon-sm trash-icon" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -304,7 +360,7 @@ function App() {
 
             {/* Analysis Results */}
             {analysisStatus !== 'idle' && (
-              <div className="card">
+              <div className="card" key={analysisStatus}>
                 <h3 className="card-title">AI Analysis Results</h3>
                 
                 {analysisStatus === 'analyzing' && (
@@ -336,7 +392,262 @@ function App() {
                   </div>
                 )}
 
-                {analysisStatus === 'complete' && (
+                {analysisStatus === 'complete' && analysisResult && (
+                  <div className="results-content">
+                    {/* Risk Assessment Container */}
+                    <div className="risk-assessment-container">
+                      <h3 className="container-title">
+                        <Shield className="icon-sm title-icon" />
+                        Loan Risk Assessment
+                      </h3>
+                      <div className="risk-metrics-grid">
+                        <div className="risk-metric-card">
+                          <div className="metric-header">
+                            <span className="metric-label">Loan Risk Category</span>
+                            <div className="metric-badge low-risk">
+                              <CheckCircle className="badge-icon" />
+                            </div>
+                          </div>
+                          <div className="metric-value-container">
+                            <span className="metric-value large">{analysisResult.risk_analysis.risk_category}</span>
+                            <span className="metric-subtitle">AI-Enhanced Classification</span>
+                          </div>
+                          <div className="risk-bar">
+                            <div className={`risk-bar-fill ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('low') ? 'low' : 'medium'}`}></div>
+                          </div>
+                          <div className="risk-scale">
+                            <span className={`scale-label ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('low') ? 'active' : ''}`}>Low</span>
+                            <span className={`scale-label ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('medium') ? 'active' : ''}`}>Medium</span>
+                            <span className={`scale-label ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('high') ? 'active' : ''}`}>High</span>
+                          </div>
+                        </div>
+
+                        <div className="risk-metric-card">
+                          <div className="metric-header">
+                            <span className="metric-label">Risk Premium</span>
+                            <TrendingUp className="icon-sm metric-icon" />
+                          </div>
+                          <div className="metric-value-container">
+                            <span className="metric-value large">{analysisResult.risk_analysis.risk_premium}%</span>
+                            <span className="metric-subtitle">AI-Calculated Premium</span>
+                          </div>
+                          <div className="premium-comparison">
+                            <div className="comparison-item">
+                              <span className="comparison-label">Market Avg:</span>
+                              <span className="comparison-value">3.8%</span>
+                            </div>
+                            <div className="comparison-item">
+                              <span className="comparison-label">Your Premium:</span>
+                              <span className="comparison-value highlight">{analysisResult.risk_analysis.risk_premium}%</span>
+                            </div>
+                          </div>
+                          <div className="savings-indicator">
+                            <span className="savings-text">{(3.8 - analysisResult.risk_analysis.risk_premium).toFixed(2)}% lower than average</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Additional Risk Indicators */}
+                      <div className="risk-indicators">
+                        <div className="indicator-item">
+                          <div className="indicator-icon green">
+                            <CheckCircle className="icon-xs" />
+                          </div>
+                          <div className="indicator-content">
+                            <span className="indicator-label">Default Probability</span>
+                            <span className="indicator-value">{analysisResult.risk_analysis.default_probability}%</span>
+                          </div>
+                        </div>
+                        <div className="indicator-item">
+                          <div className="indicator-icon green">
+                            <CheckCircle className="icon-xs" />
+                          </div>
+                          <div className="indicator-content">
+                            <span className="indicator-label">Credit Stability Score</span>
+                            <span className="indicator-value">{analysisResult.risk_analysis.credit_stability_score}/10</span>
+                          </div>
+                        </div>
+                        <div className="indicator-item">
+                          <div className="indicator-icon green">
+                            <CheckCircle className="icon-xs" />
+                          </div>
+                          <div className="indicator-content">
+                            <span className="indicator-label">Repayment Capacity</span>
+                            <span className="indicator-value">{analysisResult.risk_analysis.repayment_capacity}</span>
+                          </div>
+                        </div>
+                        <div className="indicator-item">
+                          <div className="indicator-icon blue">
+                            <Brain className="icon-xs" />
+                          </div>
+                          <div className="indicator-content">
+                            <span className="indicator-label">AI Confidence Level</span>
+                            <span className="indicator-value">{analysisResult.risk_analysis.ai_confidence}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Reasoning and Explanation Container */}
+                    <div className="reasoning-container">
+                      <h3 className="container-title">
+                        <Brain className="icon-sm title-icon" />
+                        AI Analysis Reasoning & Document Insights
+                      </h3>
+                      
+                      <div className="reasoning-content">
+                        <div className="summary-section">
+                          <h4 className="summary-title">Executive Summary</h4>
+                          <p className="summary-text">
+                            {analysisResult.executive_summary}
+                          </p>
+                        </div>
+
+                        {/* Key Findings from Documents */}
+                        <div className="findings-section">
+                          <h4 className="findings-title">Key Findings from Document Analysis</h4>
+                          
+                          {analysisResult.findings.map((finding, idx) => (
+                            <div key={idx} className={`finding-card ${finding.status}`}>
+                              <div className="finding-header">
+                                {finding.status === 'positive' ? 
+                                  <CheckCircle className="finding-icon" /> : 
+                                  <AlertCircle className="finding-icon" />
+                                }
+                                <span className="finding-tag">{finding.category}</span>
+                              </div>
+                              <p className="finding-title">{finding.title}</p>
+                              <p className="finding-description">{finding.description}</p>
+                              <div className="finding-keywords">
+                                {finding.keywords.map((keyword, kidx) => (
+                                  <span key={kidx} className="keyword">{keyword}</span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Risk Calculation Breakdown */}
+                        <div className="calculation-section">
+                          <h4 className="calculation-title">Risk Premium Calculation Breakdown</h4>
+                          <div className="calculation-grid">
+                            <div className="calculation-item">
+                              <span className="calc-label">Base Rate</span>
+                              <span className="calc-value">{analysisResult.calculation_breakdown.base_rate}%</span>
+                            </div>
+                            <div className="calculation-item">
+                              <span className="calc-label">Credit Risk Premium</span>
+                              <span className="calc-value">+{analysisResult.calculation_breakdown.credit_risk_premium}%</span>
+                            </div>
+                            <div className="calculation-item">
+                              <span className="calc-label">LTV Adjustment</span>
+                              <span className="calc-value">+{analysisResult.calculation_breakdown.ltv_adjustment}%</span>
+                            </div>
+                            <div className="calculation-item">
+                              <span className="calc-label">Employment Stability Discount</span>
+                              <span className="calc-value highlight">{analysisResult.calculation_breakdown.employment_discount}%</span>
+                            </div>
+                            <div className="calculation-item">
+                              <span className="calc-label">Additional Income Discount</span>
+                              <span className="calc-value highlight">{analysisResult.calculation_breakdown.income_discount}%</span>
+                            </div>
+                            <div className="calculation-item">
+                              <span className="calc-label">Clean Credit History Discount</span>
+                              <span className="calc-value highlight">{analysisResult.calculation_breakdown.credit_history_discount}%</span>
+                            </div>
+                            <div className="calculation-total">
+                              <span className="calc-label-total">Total Risk Premium</span>
+                              <span className="calc-value-total">{analysisResult.calculation_breakdown.total}%</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* AI Model Confidence */}
+                        <div className="confidence-section">
+                          <h4 className="confidence-title">AI Model Confidence Metrics</h4>
+                          <div className="confidence-bars">
+                            <div className="confidence-bar-item">
+                              <div className="confidence-label-row">
+                                <span className="confidence-label">Document Authenticity</span>
+                                <span className="confidence-percentage">{analysisResult.confidence_metrics.document_authenticity}%</span>
+                              </div>
+                              <div className="confidence-bar">
+                                <div className="confidence-fill" style={{width: `${analysisResult.confidence_metrics.document_authenticity}%`}}></div>
+                              </div>
+                            </div>
+                            <div className="confidence-bar-item">
+                              <div className="confidence-label-row">
+                                <span className="confidence-label">Income Stability Prediction</span>
+                                <span className="confidence-percentage">{analysisResult.confidence_metrics.income_stability}%</span>
+                              </div>
+                              <div className="confidence-bar">
+                                <div className="confidence-fill" style={{width: `${analysisResult.confidence_metrics.income_stability}%`}}></div>
+                              </div>
+                            </div>
+                            <div className="confidence-bar-item">
+                              <div className="confidence-label-row">
+                                <span className="confidence-label">Default Risk Assessment</span>
+                                <span className="confidence-percentage">{analysisResult.confidence_metrics.default_risk}%</span>
+                              </div>
+                              <div className="confidence-bar">
+                                <div className="confidence-fill" style={{width: `${analysisResult.confidence_metrics.default_risk}%`}}></div>
+                              </div>
+                            </div>
+                            <div className="confidence-bar-item">
+                              <div className="confidence-label-row">
+                                <span className="confidence-label">Overall Recommendation</span>
+                                <span className="confidence-percentage">{analysisResult.confidence_metrics.overall_recommendation}%</span>
+                              </div>
+                              <div className="confidence-bar">
+                                <div className="confidence-fill" style={{width: `${analysisResult.confidence_metrics.overall_recommendation}%`}}></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Final Recommendation */}
+                    <div className="recommendation-card">
+                      <div className="recommendation-header">
+                        <CheckCircle className="icon-md" />
+                        <h4 className="recommendation-title">Recommended for Approval</h4>
+                      </div>
+                      <p className="recommendation-text">
+                        {analysisResult.recommendation}
+                      </p>
+                      <div className="recommendation-stats">
+                        <div className="rec-stat">
+                          <span className="rec-stat-value">{analysisResult.recommendation_details.approved_amount}</span>
+                          <span className="rec-stat-label">Approved Amount</span>
+                        </div>
+                        <div className="rec-stat">
+                          <span className="rec-stat-value">{analysisResult.recommendation_details.max_tenure}</span>
+                          <span className="rec-stat-label">Max Tenure</span>
+                        </div>
+                        <div className="rec-stat">
+                          <span className="rec-stat-value">{analysisResult.recommendation_details.indicative_rate}</span>
+                          <span className="rec-stat-label">Indicative Rate</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="action-buttons">
+                      <button className="approve-button">
+                        <CheckCircle className="icon-sm" />
+                        Approve Application
+                      </button>
+                      <button className="request-button">
+                        <FileText className="icon-sm" />
+                        Request Additional Documents
+                      </button>
+                      <button className="export-button">
+                        <Upload className="icon-sm" />
+                        Export Report
+                      </button>
+                    </div>
+                  </div>
+                )}
                   <div className="results-content">
                     {/* Risk Assessment Container */}
                     <div className="risk-assessment-container">

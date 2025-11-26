@@ -1,0 +1,18 @@
+# FastAPI and web server
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+
+# Document processing
+pdfplumber==0.11.4
+python-docx==1.1.2
+
+# LLM and AI
+huggingface-hub==0.26.0
+
+# Utilities
+python-dotenv==1.0.1
+aiofiles==24.1.0
+
+# Optional: for production
+gunicorn==23.0.0
