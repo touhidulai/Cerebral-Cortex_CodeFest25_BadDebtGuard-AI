@@ -1,0 +1,26 @@
+# Minimal requirements that work with MSYS2 Python
+# Install with: pip install -r requirements-minimal.txt
+
+# Core FastAPI dependencies (pure Python packages)
+fastapi==0.115.0
+starlette==0.40.0
+pydantic==1.10.18  # Using older version for compatibility
+typing-extensions>=4.5.0
+
+# Web server - without [standard] extras
+uvicorn==0.32.0
+click>=7.0
+h11>=0.8
+
+# File handling
+python-multipart==0.0.12
+aiofiles==24.1.0
+
+# OpenAI client
+openai>=1.0.0
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Note: pdfplumber and python-docx require compiled dependencies
+# To use PDF/DOCX: Install standard Python from python.org
