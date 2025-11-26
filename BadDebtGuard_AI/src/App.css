@@ -914,6 +914,20 @@
   color: #16a34a;
 }
 
+.metric-badge.medium-risk {
+  background: #fef3c7;
+}
+.metric-badge.high-risk {
+  background: #fee2e2;
+}
+
+.metric-badge.medium-risk .badge-icon {
+  color: #b45309;
+}
+.metric-badge.high-risk .badge-icon {
+  color: #dc2626;
+}
+
 .metric-value-container {
   margin-bottom: 1.25rem;
 }
@@ -928,7 +942,20 @@
 
 .metric-value.large {
   font-size: 2rem;
+}
+
+/* Metric value color by risk class */
+.metric-value.large.low,
+.risk-metric-card.low .metric-value.large {
   color: #16a34a;
+}
+.metric-value.large.medium,
+.risk-metric-card.medium .metric-value.large {
+  color: #b45309;
+}
+.metric-value.large.high,
+.risk-metric-card.high .metric-value.large {
+  color: #dc2626;
 }
 
 .metric-subtitle {
@@ -962,6 +989,17 @@
   background: linear-gradient(90deg, #22c55e, #16a34a);
 }
 
+/* Medium / High fill styles */
+.risk-bar-fill.medium {
+  width: 60%;
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.risk-bar-fill.high {
+  width: 90%;
+  background: linear-gradient(90deg, #f97316, #dc2626);
+}
+
 @keyframes fillBar {
   from {
     width: 0%;
@@ -980,8 +1018,18 @@
 }
 
 .scale-label.active {
-  color: #16a34a;
   font-weight: 700;
+}
+
+/* Color the active scale-label by risk class on the parent card */
+.risk-metric-card.low .scale-label.active {
+  color: #16a34a;
+}
+.risk-metric-card.medium .scale-label.active {
+  color: #b45309;
+}
+.risk-metric-card.high .scale-label.active {
+  color: #dc2626;
 }
 
 /* Premium Comparison */
