@@ -3,24 +3,28 @@ import { Upload, FileText, Brain, CheckCircle, AlertCircle, TrendingUp, Building
 import './App.css';
 
 function App() {
+  // State Initialization
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedBankingSystem, setSelectedBankingSystem] = useState('');
+  // 1. Set 'conventional' as the default selection
+  const [selectedBankingSystem, setSelectedBankingSystem] = useState('conventional');
   const [selectedLoanType, setSelectedLoanType] = useState('');
   const [selectedCustomerType, setSelectedCustomerType] = useState('');
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [analysisStatus, setAnalysisStatus] = useState('idle');
   const [analysisResult, setAnalysisResult] = useState(null);
 
+  // Configuration Data
   const bankingSystems = [
     { id: 'conventional', name: 'Conventional Banking', icon: Building2 },
     { id: 'islamic', name: 'Islamic Banking', icon: Shield }
   ];
 
+  // 2. Updated loan/financing types data
   const loanTypes = [
-    { id: 'home', name: 'Home Loan', icon: Home, docs: ['Income proof', 'Property valuation', 'SPA', 'Title deed'] },
-    { id: 'car', name: 'Car Loan', icon: Car, docs: ['Income proof', 'Vehicle invoice', 'Insurance quote'] },
-    { id: 'personal', name: 'Personal Loan', icon: User, docs: ['Income proof', 'Bank statements', 'ID documents'] },
-    { id: 'business', name: 'Business Loan', icon: Briefcase, docs: ['Financial statements', 'Business registration', 'Tax returns'] }
+    { id: 'home', name: 'Home Financing', icon: Home, docs: ['Income proof', 'Property valuation', 'SPA', 'Title deed'] },
+    { id: 'car', name: 'Car Financing', icon: Car, docs: ['Income proof', 'Vehicle invoice', 'Insurance quote'] },
+    { id: 'personal', name: 'Personal Financing', icon: User, docs: ['Income proof', 'Bank statements', 'ID documents'] },
+    { id: 'business', name: 'Business Financing', icon: Briefcase, docs: ['Financial statements', 'Business registration', 'Tax returns'] }
   ];
 
   const customerTypes = [
@@ -29,6 +33,16 @@ function App() {
     { id: 'small-business', name: 'Small Business Owner', requirements: ['Business financial statements', 'SSM registration', 'Bank statements (6 months)'] },
     { id: 'large-business', name: 'Large Enterprise', requirements: ['Audited financial statements', 'Company registration', 'Board resolution'] }
   ];
+
+  // Helper function to dynamically change 'Financing' to 'Loan' for Conventional
+  const getLoanTypeName = (baseName) => {
+    if (selectedBankingSystem === 'conventional') {
+      // Replace 'Financing' with 'Loan' only for conventional
+      return baseName.replace('Financing', 'Loan');
+    }
+    // For Islamic, keep 'Financing'
+    return baseName;
+  };
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -234,11 +248,12 @@ function App() {
                 </div>
               </div>
 
-              {/* Step 2: Loan Type */}
+              {/* Step 2: Loan/Financing Type */}
               <div className="step-section">
                 <h3 className="step-title">
                   <span className="step-number">2</span>
-                  Loan Type
+                  {/* Dynamic Title based on selection */}
+                  {selectedBankingSystem === 'islamic' ? 'Financing Type' : 'Loan Type'}
                 </h3>
                 <div className="loan-type-grid">
                   {loanTypes.map((loan) => (
@@ -250,7 +265,8 @@ function App() {
                       <div className={`loan-icon ${selectedLoanType === loan.id ? 'selected' : ''}`}>
                         <loan.icon className="icon-md" />
                       </div>
-                      <p className="loan-name">{loan.name}</p>
+                      {/* Dynamic Loan/Financing Name */}
+                      <p className="loan-name">{getLoanTypeName(loan.name)}</p>
                     </button>
                   ))}
                 </div>
@@ -280,7 +296,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Step 4: Document Upload */}
+              {/* Step 4: Document Upload (Conditional on selection) */}
               {selectedBankingSystem && selectedLoanType && selectedCustomerType && (
                 <div className="step-section">
                   <h3 className="step-title">
@@ -324,7 +340,7 @@ function App() {
                 </div>
               )}
 
-              {/* CCRIS Integration */}
+              {/* CCRIS Integration (Conditional on selection) */}
               {selectedBankingSystem && selectedLoanType && selectedCustomerType && (
                 <div className="step-section">
                   <h3 className="step-title">
@@ -349,7 +365,7 @@ function App() {
                 </div>
               )}
 
-              {/* Start Analysis Button */}
+              {/* Start Analysis Button (Conditional on uploaded docs) */}
               {uploadedDocs.length > 0 && (
                 <button onClick={startAnalysis} className="analyze-button">
                   <Zap className="icon-sm" />
@@ -358,7 +374,7 @@ function App() {
               )}
             </div>
 
-            {/* Analysis Results */}
+            {/* Analysis Results (Conditional on status) */}
             {analysisStatus !== 'idle' && (
               <div className="card" key={analysisStatus}>
                 <h3 className="card-title">AI Analysis Results</h3>
@@ -392,6 +408,7 @@ function App() {
                   </div>
                 )}
 
+                {/* --- Complete Analysis Results - Dynamic (uses analysisResult) --- */}
                 {analysisStatus === 'complete' && analysisResult && (
                   <div className="results-content">
                     {/* Risk Assessment Container */}
@@ -404,7 +421,7 @@ function App() {
                         <div className="risk-metric-card">
                           <div className="metric-header">
                             <span className="metric-label">Loan Risk Category</span>
-                            <div className="metric-badge low-risk">
+                            <div className={`metric-badge ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('low') ? 'low-risk' : analysisResult.risk_analysis.risk_category.toLowerCase().includes('medium') ? 'medium-risk' : 'high-risk'}`}>
                               <CheckCircle className="badge-icon" />
                             </div>
                           </div>
@@ -413,7 +430,7 @@ function App() {
                             <span className="metric-subtitle">AI-Enhanced Classification</span>
                           </div>
                           <div className="risk-bar">
-                            <div className={`risk-bar-fill ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('low') ? 'low' : 'medium'}`}></div>
+                            <div className={`risk-bar-fill ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('low') ? 'low' : analysisResult.risk_analysis.risk_category.toLowerCase().includes('medium') ? 'medium' : 'high'}`}></div>
                           </div>
                           <div className="risk-scale">
                             <span className={`scale-label ${analysisResult.risk_analysis.risk_category.toLowerCase().includes('low') ? 'active' : ''}`}>Low</span>
@@ -648,6 +665,8 @@ function App() {
                     </div>
                   </div>
                 )}
+                
+                {/* --- Complete Analysis Results - Hardcoded Example (Kept for fallback/demo style) --- */}
                   <div className="results-content">
                     {/* Risk Assessment Container */}
                     <div className="risk-assessment-container">
