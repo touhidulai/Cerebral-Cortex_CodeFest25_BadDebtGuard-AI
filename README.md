@@ -42,14 +42,14 @@ Cerebral-cortex/
    pip install -r requirements.txt
    ```
 
-3. Create `.env` file with your HuggingFace token:
+3. Create `.env` file with your OpenAI API key:
    ```powershell
    Copy-Item .env.template .env
-   # Then edit .env and add your HF_TOKEN
+   # Then edit .env and add your OPENAI_API_KEY
    ```
    Example `.env` content:
    ```
-   HF_TOKEN=your_token_here
+   OPENAI_API_KEY=sk-proj-your_key_here
    ```
 
 4. Start the server:
@@ -87,7 +87,8 @@ The frontend will be available at `http://localhost:5173`
 - **Multi-Banking Support**: Conventional and Islamic banking models
 - **Loan Type Coverage**: Home, Car, Personal, and Business financing
 - **Customer Segmentation**: Salaried, Rental Income, Small Business, Large Enterprise
-- **AI-Powered Analysis**: LLM-based document analysis and risk assessment
+- **AI-Powered Analysis**: OpenAI GPT-4o based document analysis and credit risk assessment
+- **Bilingual Interface**: English and Malay language support
 - **Document Processing**: PDF, DOCX, TXT, and image file support
 - **Risk Metrics**: Credit scoring, default probability, and risk premium calculation
 - **CCRIS Integration**: Bank Negara Malaysia credit reporting integration
@@ -96,16 +97,17 @@ The frontend will be available at `http://localhost:5173`
 
 **Backend:**
 - FastAPI
-- Python 3.8+
-- HuggingFace Inference API
+- Python 3.12+
+- OpenAI GPT-4o API
 - PDFPlumber, python-docx
 - Pydantic
 
 **Frontend:**
 - React 19
-- Vite
-- TailwindCSS
-- Lucide Icons
+- Vite 7
+- TailwindCSS 4
+- Lucide React Icons
+- Bilingual Support (English/Malay)
 
 ## 📝 API Endpoints
 
