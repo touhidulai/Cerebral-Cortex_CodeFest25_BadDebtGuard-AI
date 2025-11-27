@@ -5,8 +5,7 @@ Integrates with the Cerebral Cortex Credit Risk Intelligence Agent
 
 import os
 import json
-import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 from openai import AsyncOpenAI
 from app.config import OPENAI_API_KEY
 
@@ -24,35 +23,80 @@ async def analyze_with_openai(
     """
     Call OpenAI's GPT model to analyze loan documents using the Cerebral Cortex agent logic
     Enhanced with RAG (Retrieval-Augmented Generation) using ChromaDB
-    
+
     Args:
         extracted_text: Combined text from all uploaded documents
         banking_system: conventional or islamic
         loan_type: home, car, personal, or business
         customer_type: salaried, rental, small-business, or large-business
         rag_context: Retrieved BNM guidelines from ChromaDB (optional)
-        
+
     Returns:
         Dict containing structured analysis results matching frontend expectations
     """
-    
-    # Build the comprehensive prompt for the Credit Risk Intelligence agent
-    prompt = f"""You are "Cerebral Cortex," an advanced AI credit risk engine purpose-built for the Malaysian banking ecosystem.
+
+    # Human-readable mappings
+    banking_map = {
+        "conventional": "Conventional Banking (interest-based)",
+        "islamic": "Islamic Banking (Shariah-compliant)"
+    }
+    loan_map = {
+        "home": "Home Loan/Financing",
+        "car": "Car Loan/Financing",
+        "personal": "Personal Loan/Financing",
+        "business": "Business Loan/Financing"
+    }
+    customer_map = {
+        "salaried": "Salaried Employee",
+        "rental": "Rental Income",
+        "small-business": "Small Business Owner",
+        "large-business": "Large Enterprise"
+    }
+
+    banking_readable = banking_map.get(banking_system, banking_system)
+    loan_readable = loan_map.get(loan_type, loan_type)
+    customer_readable = customer_map.get(customer_type, customer_type)
+
+    # Add banking-specific guidance so the LLM tailors outputs correctly
+    banking_guidance = (
+        "General instructions: Use Malaysia-specific banking practices and reference Bank Negara Malaysia guidelines where applicable."
+    )
+    if banking_system == "islamic":
+        banking_guidance += (
+            " For Islamic Banking (Shariah-compliant) responses: do not use the term 'interest' or 'riba'. "
+            "Frame pricing as profit-rate or markup, reference common Islamic financing contracts (e.g., Murabaha, Ijara, Musawamah), "
+            "consider takaful as an insurance alternative, and ensure recommendations align with Shariah principles and typical Malaysian Islamic banking practice."
+        )
+    else:
+        banking_guidance += (
+            " For Conventional Banking responses: use standard interest-based terminology, conventional risk-premium calculations, and reference typical Malaysian banking practices."
+        )
+
+    # Truncate long extracted_text to keep prompt size reasonable
+    if not extracted_text:
+        extracted_text = "[NO DOCUMENT TEXT PROVIDED]"
+
+    if len(extracted_text) <= 12000:
+        doc_snippet = extracted_text
+    else:
+        doc_snippet = extracted_text[:6000] + "\n\n[... Content truncated for length ...]\n\n" + extracted_text[-6000:]
+
+    # Build the comprehensive prompt for the Credit Risk Intelligence agent (single string)
+    prompt = f"""
+You are "Cerebral Cortex," an advanced AI credit risk engine purpose-built for the Malaysian banking ecosystem.
 
 {rag_context if rag_context else ""}
 
-"""
-    
-    prompt += f"""You are "Cerebral Cortex," an advanced AI credit risk engine purpose-built for the Malaysian banking ecosystem. 
-
 CONTEXT:
-- Banking System: {banking_system}
-- Loan Type: {loan_type}
-- Customer Type: {customer_type}
+- Banking System: {banking_readable}
+- Loan Type: {loan_readable}
+- Customer Type: {customer_readable}
+
+{banking_guidance}
 
 DOCUMENTS TO ANALYZE:
 \"\"\"
-{extracted_text[:12000] if len(extracted_text) <= 12000 else extracted_text[:6000] + '\n\n[... Content truncated for length ...]\n\n' + extracted_text[-6000:]}
+{doc_snippet}
 \"\"\"
 
 Your task is to analyze these documents and provide a structured credit risk assessment.
@@ -104,26 +148,27 @@ REQUIRED OUTPUT FORMAT (JSON):
 
 ANALYSIS STEPS:
 
-1. **Document Extraction**: Extract monthly income, debt obligations, employment status, and assets
-2. **Quantitative Analysis**: Calculate DSR, credit score, and detect missed payments
-3. **Qualitative Analysis**: Analyze text for behavioral signals, hesitation, confidence
-4. **Risk Premium Calculation**: Base rate + risk premium + adjustments - discounts
-5. **Generate Findings**: Create 4-5 findings with evidence citations
+1. Document Extraction: Extract monthly income, debt obligations, employment status, and assets.
+2. Quantitative Analysis: Calculate DSR, credit score proxy, and detect missed payments from bank statements/CCRIS.
+3. Qualitative Analysis: Analyze text for behavioral signals, hesitation, confidence; flag inconsistent statements.
+4. Risk Premium Calculation: Base rate + risk premium + LTV adjustment + other adjustments - discounts.
+5. Generate Findings: Create 4-5 findings with evidence citations from the provided documents.
 
 IMPORTANT:
-- Provide at least 4-5 findings (mix of positive and warnings)
-- Each finding must have a clear status (positive/warning)
-- Calculate accurate risk premium based on risk level
-- Ensure all numeric values are realistic
-- Reference Malaysian banking practices
-- If information is missing, make reasonable assumptions based on customer type
+- Provide at least 4-5 findings (mix of positive and warnings).
+- Each finding must have a clear status (positive/warning).
+- Calculate accurate risk premium based on risk level and provide realistic numeric values.
+- Reference Malaysian banking practices and assume reasonable defaults when information is missing. Use the customer type to guide assumptions.
+- Output ONLY the JSON structure, and nothing else.
+"""
 
-Output ONLY the JSON structure, no additional text."""
+    # Prepare a default result_text for error logging if needed
+    result_text = None
 
     try:
-        # Call OpenAI API with reasoning model
+        # Call OpenAI API (async)
         response = await client.chat.completions.create(
-            model="gpt-4o",  # Use appropriate model
+            model="gpt-4o",
             messages=[
                 {
                     "role": "system",
@@ -134,26 +179,29 @@ Output ONLY the JSON structure, no additional text."""
                     "content": prompt
                 }
             ],
-            temperature=0.3,  # Lower for more consistent output
-            max_tokens=6000,  # Increased for detailed findings
+            temperature=0.25,
+            max_tokens=4000,
             response_format={"type": "json_object"}
         )
-        
-        # Parse the response
+
+        # Extract response content safely
+        # Note: shape depends on SDK; this follows the structure used previously.
         result_text = response.choices[0].message.content
         result = json.loads(result_text)
-        
+
         # Post-process and validate the result
         result = validate_and_enhance_result(result, banking_system, loan_type, customer_type)
-        
+
         return result
-        
+
     except json.JSONDecodeError as e:
+        # If LLM returned something not valid JSON, log raw text and return fallback
         print(f"JSON parsing error: {e}")
-        print(f"Raw response: {result_text}")
+        print(f"Raw response text from model: {result_text}")
         return create_fallback_result(banking_system, loan_type, customer_type)
-    
+
     except Exception as e:
+        # General fallback on API or network errors
         print(f"OpenAI API error: {e}")
         return create_fallback_result(banking_system, loan_type, customer_type)
 
@@ -162,80 +210,139 @@ def validate_and_enhance_result(result: Dict, banking_system: str, loan_type: st
     """
     Validate and enhance the OpenAI result to ensure it matches frontend expectations
     """
-    
+
     # Ensure all required fields exist
-    if "risk_analysis" not in result:
+    if "risk_analysis" not in result or not isinstance(result["risk_analysis"], dict):
         result["risk_analysis"] = {}
-    
+
     risk = result["risk_analysis"]
-    
+
     # Validate risk_category and risk_level
-    if "risk_category" not in risk or not risk["risk_category"]:
-        risk["risk_category"] = "MEDIUM RISK"
-    if "risk_level" not in risk:
-        risk["risk_level"] = risk["risk_category"]
-    
+    rc = str(risk.get("risk_category", "")).upper()
+    if rc not in {"LOW RISK", "MEDIUM RISK", "HIGH RISK"}:
+        # Try risk_level or set default
+        rl = str(risk.get("risk_level", "")).upper()
+        rc = rl if rl in {"LOW RISK", "MEDIUM RISK", "HIGH RISK"} else "MEDIUM RISK"
+    risk["risk_category"] = rc
+    risk["risk_level"] = risk.get("risk_level", rc)
+
     # Ensure numeric values are present and reasonable
-    risk["risk_premium"] = float(risk.get("risk_premium", 2.5))
-    risk["default_probability"] = float(risk.get("default_probability", 2.5))
-    risk["credit_stability_score"] = float(risk.get("credit_stability_score", 7.0))
+    try:
+        risk["risk_premium"] = float(risk.get("risk_premium", 2.5))
+    except (TypeError, ValueError):
+        risk["risk_premium"] = 2.5
+
+    try:
+        risk["default_probability"] = float(risk.get("default_probability", 2.5))
+    except (TypeError, ValueError):
+        risk["default_probability"] = 2.5
+
+    try:
+        risk["credit_stability_score"] = float(risk.get("credit_stability_score", 7.0))
+    except (TypeError, ValueError):
+        risk["credit_stability_score"] = 7.0
+
     risk["repayment_capacity"] = risk.get("repayment_capacity", "Moderate")
-    risk["ai_confidence"] = float(risk.get("ai_confidence", 90.0))
-    
-    # Ensure findings exist and have at least 3 items
-    if "findings" not in result or len(result["findings"]) < 3:
+    try:
+        risk["ai_confidence"] = float(risk.get("ai_confidence", 90.0))
+    except (TypeError, ValueError):
+        risk["ai_confidence"] = 90.0
+
+    # Ensure findings exist and have at least 4 items
+    if "findings" not in result or not isinstance(result["findings"], list) or len(result["findings"]) < 4:
         result["findings"] = generate_default_findings(customer_type, loan_type)
-    
+
     # Ensure each finding has all required fields
     for finding in result["findings"]:
-        if "keywords" not in finding or not finding["keywords"]:
+        if "keywords" not in finding or not isinstance(finding["keywords"], list) or not finding["keywords"]:
             finding["keywords"] = ["Analysis", "Risk Assessment", "Documentation"]
-        if "status" not in finding:
-            finding["status"] = "positive"
-    
+        if "status" not in finding or finding["status"] not in {"positive", "warning"}:
+            # default to positive if not specified
+            finding["status"] = finding.get("status", "positive")
+
     # Validate calculation breakdown
-    if "calculation_breakdown" not in result:
+    if "calculation_breakdown" not in result or not isinstance(result["calculation_breakdown"], dict):
         result["calculation_breakdown"] = {}
-    
+
     calc = result["calculation_breakdown"]
-    calc["base_rate"] = float(calc.get("base_rate", 1.95))
-    calc["credit_risk_premium"] = float(calc.get("credit_risk_premium", risk["risk_premium"] * 0.15))
-    calc["ltv_adjustment"] = float(calc.get("ltv_adjustment", 0.39))
-    calc["employment_discount"] = float(calc.get("employment_discount", -0.15 if "LOW" in risk["risk_category"] else 0))
-    calc["income_discount"] = float(calc.get("income_discount", -0.10 if "LOW" in risk["risk_category"] else 0))
-    calc["credit_history_discount"] = float(calc.get("credit_history_discount", -0.20 if "LOW" in risk["risk_category"] else 0))
+    try:
+        calc["base_rate"] = float(calc.get("base_rate", 1.95))
+    except (TypeError, ValueError):
+        calc["base_rate"] = 1.95
+
+    try:
+        calc["credit_risk_premium"] = float(calc.get("credit_risk_premium", risk["risk_premium"] * 0.15))
+    except (TypeError, ValueError):
+        calc["credit_risk_premium"] = round(risk["risk_premium"] * 0.15, 2)
+
+    try:
+        calc["ltv_adjustment"] = float(calc.get("ltv_adjustment", 0.39))
+    except (TypeError, ValueError):
+        calc["ltv_adjustment"] = 0.39
+
+    # Discounts: negative or zero values expected
+    calc["employment_discount"] = float(calc.get("employment_discount", -0.15 if "LOW" in risk["risk_category"] else 0.0))
+    calc["income_discount"] = float(calc.get("income_discount", -0.10 if "LOW" in risk["risk_category"] else 0.0))
+    calc["credit_history_discount"] = float(calc.get("credit_history_discount", -0.20 if "LOW" in risk["risk_category"] else 0.0))
+
     calc["total"] = round(
-        calc["base_rate"] + calc["credit_risk_premium"] + calc["ltv_adjustment"] + 
-        calc["employment_discount"] + calc["income_discount"] + calc["credit_history_discount"], 2
+        calc["base_rate"]
+        + calc["credit_risk_premium"]
+        + calc["ltv_adjustment"]
+        + calc["employment_discount"]
+        + calc["income_discount"]
+        + calc["credit_history_discount"],
+        2
     )
-    
+
     # Validate confidence metrics
-    if "confidence_metrics" not in result:
+    if "confidence_metrics" not in result or not isinstance(result["confidence_metrics"], dict):
         result["confidence_metrics"] = {}
-    
+
     conf = result["confidence_metrics"]
-    conf["document_authenticity"] = float(conf.get("document_authenticity", 95.0))
-    conf["income_stability"] = float(conf.get("income_stability", 92.0))
-    conf["default_risk"] = float(conf.get("default_risk", 90.0))
-    conf["overall_recommendation"] = float(conf.get("overall_recommendation", risk["ai_confidence"]))
-    
+    try:
+        conf["document_authenticity"] = float(conf.get("document_authenticity", 95.0))
+    except (TypeError, ValueError):
+        conf["document_authenticity"] = 95.0
+
+    try:
+        conf["income_stability"] = float(conf.get("income_stability", 92.0))
+    except (TypeError, ValueError):
+        conf["income_stability"] = 92.0
+
+    try:
+        conf["default_risk"] = float(conf.get("default_risk", 90.0))
+    except (TypeError, ValueError):
+        conf["default_risk"] = 90.0
+
+    try:
+        conf["overall_recommendation"] = float(conf.get("overall_recommendation", risk["ai_confidence"]))
+    except (TypeError, ValueError):
+        conf["overall_recommendation"] = risk["ai_confidence"]
+
     # Validate recommendation details
-    if "recommendation_details" not in result:
+    if "recommendation_details" not in result or not isinstance(result["recommendation_details"], dict):
         result["recommendation_details"] = {}
-    
+
     rec_det = result["recommendation_details"]
     rec_det["approved_amount"] = rec_det.get("approved_amount", "RM 500,000")
     rec_det["max_tenure"] = rec_det.get("max_tenure", "30 years" if loan_type == "home" else "10 years")
     rec_det["indicative_rate"] = rec_det.get("indicative_rate", f"{calc['total']}%")
-    
+
     # Ensure executive summary exists
     if "executive_summary" not in result or not result["executive_summary"]:
-        result["executive_summary"] = f"Based on analysis of the submitted documents for {banking_system} {loan_type} financing, the applicant demonstrates {risk['risk_category'].lower()} with {risk['repayment_capacity'].lower()} repayment capacity."
-    
+        result["executive_summary"] = (
+            f"Based on analysis of the submitted documents for {banking_system} {loan_type} financing, "
+            f"the applicant demonstrates {risk['risk_category'].lower()} with {risk['repayment_capacity'].lower()} repayment capacity."
+        )
+
     # Ensure recommendation exists
     if "recommendation" not in result or not result["recommendation"]:
-        result["recommendation"] = f"The application is recommended for consideration based on the {risk['risk_category'].lower()} assessment. The applicant qualifies for {banking_system} {loan_type} financing with appropriate terms."
-    
+        result["recommendation"] = (
+            f"The application is recommended for consideration based on the {risk['risk_category'].lower()} assessment. "
+            f"The applicant qualifies for {banking_system} {loan_type} financing with appropriate terms."
+        )
+
     return result
 
 
@@ -273,7 +380,7 @@ def generate_default_findings(customer_type: str, loan_type: str) -> List[Dict]:
             "status": "positive"
         }
     ]
-    
+
     return findings
 
 

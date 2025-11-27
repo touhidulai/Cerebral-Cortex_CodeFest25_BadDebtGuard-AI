@@ -396,13 +396,25 @@ async def analyze_loan(
         
         # Add XGBoost insights as finding if available
         if xgb_prediction:
-            xgb_finding = {
-                "category": "XGBOOST ML MODEL",
-                "title": f"{xgb_prediction['risk_level']} Risk - {xgb_prediction['recommendation']}",
-                "description": f"Machine learning model trained on 24,000 historical loans predicts {xgb_prediction['approval_probability']}% approval probability with {xgb_prediction['model_confidence']}% confidence. XGBoost analysis based on quantitative features (income, credit score, DTI, employment).",
-                "keywords": ["XGBoost", "Machine Learning", "Quantitative Analysis", "Predictive Model"],
-                "status": "positive" if xgb_prediction['approval_probability'] >= 60 else "warning"
-            }
+            # Check data quality
+            data_quality = xgb_prediction.get('data_quality', 'GOOD')
+            
+            if data_quality == 'INSUFFICIENT':
+                xgb_finding = {
+                    "category": "XGBOOST ML MODEL",
+                    "title": f"{xgb_prediction['risk_level']} Risk - Data Limited",
+                    "description": f"Machine learning model requires more financial data for accurate prediction. Current confidence: {xgb_prediction['model_confidence']}%. Please ensure documents contain clear income, loan amount, and debt information. XGBoost trained on 24,000 Malaysian loan records.",
+                    "keywords": ["XGBoost", "Data Quality", "Incomplete Information"],
+                    "status": "warning"
+                }
+            else:
+                xgb_finding = {
+                    "category": "XGBOOST ML MODEL",
+                    "title": f"{xgb_prediction['risk_level']} Risk - {xgb_prediction['recommendation']}",
+                    "description": f"Machine learning model trained on 24,000 historical Malaysian loans predicts {xgb_prediction['approval_probability']:.1f}% approval probability with {xgb_prediction['model_confidence']:.1f}% confidence. Analysis based on: Annual income, Credit profile (DSR-derived), Loan amount, DTI ratio ({credit_analysis.get('dsr', 0):.1f}%), and Employment status.",
+                    "keywords": ["XGBoost", "Machine Learning", "Quantitative Analysis", "Predictive Model"],
+                    "status": "positive" if xgb_prediction['approval_probability'] >= 60 else "warning"
+                }
             analysis_result["findings"].insert(0, xgb_finding)
         
         # Add fraud signals as findings if any

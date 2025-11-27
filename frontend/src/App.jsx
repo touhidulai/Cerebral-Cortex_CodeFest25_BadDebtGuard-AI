@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Upload, FileText, Brain, CheckCircle, AlertCircle, TrendingUp, Building2, User, Home, Car, Briefcase, ChevronRight, Shield, Database, Zap, Trash2 } from 'lucide-react';
 import './App.css';
 
@@ -12,11 +12,14 @@ function App() {
   const [analysisStatus, setAnalysisStatus] = useState('idle');
   const [analysisResult, setAnalysisResult] = useState(null);
   const [language, setLanguage] = useState('en'); // Language state: 'en' or 'ms'
+  // Refs for scrolling to sections
+  const analyzingRef = useRef(null);
+  const resultsRef = useRef(null);
 
   // Translations
   const translations = {
     en: {
-      appTitle: 'LoanAI Pro',
+      appTitle: 'BadDebt Guard AI',
       appSubtitle: 'Intelligent Loan Assessment Platform',
       dashboard: 'Dashboard',
       newAssessment: 'New Assessment',
@@ -211,6 +214,14 @@ function App() {
     // Reset result before starting new analysis
     setAnalysisResult(null);
     setAnalysisStatus('analyzing');
+    // Scroll to the analyzing animation once it renders
+    setTimeout(() => {
+      try {
+        analyzingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {
+        // ignore
+      }
+    }, 120);
     
     try {
       // Prepare form data
@@ -241,11 +252,27 @@ function App() {
       // Store the analysis result
       setAnalysisResult(data);
       setAnalysisStatus('complete');
+      // Scroll to results after a short delay to allow render
+      setTimeout(() => {
+        try {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (e) {
+          // ignore
+        }
+      }, 200);
       
     } catch (error) {
       console.error('Analysis error:', error);
       setAnalysisResult(null); // Ensure result is null on error
       setAnalysisStatus('error');
+      // Scroll to results (error block) so user sees failure
+      setTimeout(() => {
+        try {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (e) {
+          // ignore
+        }
+      }, 200);
     }
   };
 
@@ -346,7 +373,7 @@ function App() {
                   </div>
                   <span className="stat-trend positive">+8%</span>
                 </div>
-                <h3 className="stat-value">182</h3>
+                <h3 className="stat-value">82</h3>
                 <p className="stat-label">{t.approved}</p>
               </div>
               <div className="stat-card">
@@ -377,8 +404,8 @@ function App() {
               <div className="assessment-list">
                 {[
                   { id: 'LA-2024-1148', name: 'Ahmad bin Hassan', type: language === 'en' ? 'Home Loan' : 'Pinjaman Rumah', status: 'approved', score: 782 },
-                  { id: 'LA-2024-1147', name: 'Siti Nurhaliza', type: language === 'en' ? 'Car Loan' : 'Pinjaman Kereta', status: 'pending', score: 715 },
-                  { id: 'LA-2024-1146', name: 'Kumar Subramaniam', type: language === 'en' ? 'Business Loan' : 'Pinjaman Perniagaan', status: 'review', score: 698 }
+                  { id: 'LA-2024-1147', name: 'Siti Nurhaliza', type: language === 'en' ? 'Car Loan' : 'Pinjaman Kereta', status: 'pending', score: 615 },
+                  { id: 'LA-2024-1146', name: 'Kumar Subramaniam', type: language === 'en' ? 'Business Loan' : 'Pinjaman Perniagaan', status: 'review', score: 498 }
                 ].map((assessment) => (
                   <div key={assessment.id} className="assessment-item">
                     <div className="assessment-info">
@@ -570,7 +597,7 @@ function App() {
             {/* Analysis Results */}
             {/* Show only 'analyzing' state (spinner) */}
             {analysisStatus === 'analyzing' && (
-                <div className="card">
+              <div className="card" ref={analyzingRef}>
                     <h3 className="card-title">AI Analysis Results</h3>
                     <div className="analyzing-state">
                         <div className="analysis-animation">
@@ -604,7 +631,7 @@ function App() {
 
             {/* Show FINAL Results only when COMPLETE or ERROR */}
             {analysisStatus === 'complete' || analysisStatus === 'error' ? (
-                <div className="card" key={analysisStatus}>
+              <div className="card" key={analysisStatus} ref={resultsRef}>
                     <h3 className="card-title">{language === 'en' ? 'AI Analysis Results' : 'Keputusan Analisis AI'}</h3>
 
                     {/* 1. DYNAMIC/BACKEND SUCCESS RESULTS */}
@@ -1210,26 +1237,34 @@ function App() {
         )}
 
         {activeTab === 'history' && (
-          <div className="history-content">
-            <div className="card">
-              <h2 className="card-title">Assessment History</h2>
-              <div className="history-list">
-                {[...Array(8)].map((_, i) => (
-                  <div key={i} className="history-item">
-                    <div className="history-info">
-                      <div className="status-dot approved"></div>
-                      <div>
-                        <p className="history-name">Customer #{1150 - i}</p>
-                        <p className="history-meta">LA-2024-{1150 - i} • Processed on Nov {25 - i}, 2024</p>
+            <div className="history-content">
+              <div className="card">
+                <h2 className="card-title">Assessment History</h2>
+                <div className="history-list">
+                  {[...Array(8)].map((_, i) => {
+                    // Calculate date but do not go below Nov 24
+                    const day = Math.max(24, 27 - i);
+                    const processDate = `Nov ${day}, 2025`;
+
+                    return (
+                      <div key={i} className="history-item">
+                        <div className="history-info">
+                          <div className="status-dot approved"></div>
+                          <div>
+                            <p className="history-name">Customer #{8 - i}</p>
+                            <p className="history-meta">
+                              LA-2025-{1150 - i} • Processed on {processDate}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className="icon-sm chevron" />
                       </div>
-                    </div>
-                    <ChevronRight className="icon-sm chevron" />
-                  </div>
-                ))}
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
     </div>
   );

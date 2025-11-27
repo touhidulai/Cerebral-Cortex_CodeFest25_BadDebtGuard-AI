@@ -235,22 +235,66 @@ class XGBoostLoanPredictor:
             document_data: Dict containing extracted financial information
         
         Returns:
-            XGBoost prediction results
+            XGBoost prediction results or None if insufficient data
         """
-        # Extract features with defaults
-        income = document_data.get('income', 0)
-        credit_score = document_data.get('credit_score', 650)  # Default to median
+        # Extract features with proper key mapping
+        monthly_income = document_data.get('monthly_income', 0)
+        monthly_debt = document_data.get('monthly_debt', 0)
         loan_amount = document_data.get('loan_amount', 0)
-        dti_ratio = document_data.get('dti_ratio', 0)
-        employment_status = 'employed' if document_data.get('employment_status', '').lower() in ['employed', 'self-employed'] else 'unemployed'
+        employment_years = document_data.get('employment_years', 0)
         
-        return self.predict_risk(
+        # Calculate annual income (XGBoost was trained on annual)
+        income = monthly_income * 12
+        
+        # Calculate DTI ratio if we have income
+        if monthly_income > 0:
+            dti_ratio = (monthly_debt / monthly_income) * 100
+        else:
+            dti_ratio = 0
+        
+        # Estimate credit score based on DTI (since we don't extract it from documents)
+        # This is a rough approximation aligned with the training data
+        if dti_ratio == 0:
+            credit_score = 650  # Neutral default when no data
+        elif dti_ratio <= 20:
+            credit_score = 750  # Excellent
+        elif dti_ratio <= 35:
+            credit_score = 700  # Good
+        elif dti_ratio <= 50:
+            credit_score = 650  # Fair
+        elif dti_ratio <= 70:
+            credit_score = 600  # Below average
+        else:
+            credit_score = 550  # Poor
+        
+        # Determine employment status
+        employment_status = 'employed' if employment_years > 0 else 'unemployed'
+        
+        # Check if we have sufficient data for meaningful prediction
+        if income == 0 or loan_amount == 0:
+            # Return conservative estimate when data is missing
+            return {
+                'approval_probability': 50.0,
+                'rejection_probability': 50.0,
+                'risk_score': 50.0,
+                'risk_level': 'MEDIUM',
+                'recommendation': 'MEDIUM RISK - Insufficient data for accurate prediction',
+                'model_confidence': 30.0,
+                'data_quality': 'INSUFFICIENT'
+            }
+        
+        result = self.predict_risk(
             income=income,
             credit_score=credit_score,
             loan_amount=loan_amount,
             dti_ratio=dti_ratio,
             employment_status=employment_status
         )
+        
+        # Add data quality indicator
+        result['data_quality'] = 'GOOD' if monthly_income > 0 and loan_amount > 0 else 'LIMITED'
+        
+        return result
 
 
 def train_model_cli():
