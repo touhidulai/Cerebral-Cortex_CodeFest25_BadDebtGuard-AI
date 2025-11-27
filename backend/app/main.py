@@ -17,6 +17,9 @@ import logging
 from app.extractor import extract_text
 from app.openai_agent import analyze_with_openai
 from app.config import OPENAI_API_KEY
+from app.fraud_detector import detect_fraud_signals, calculate_document_quality_score
+from app.credit_scorer import CreditScoreCalculator
+from app.xgboost_predictor import XGBoostLoanPredictor
 
 # --- Logging ---
 logging.basicConfig(level=logging.INFO)
@@ -34,8 +37,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "http://localhost:5174",
         "http://localhost:3000",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -258,17 +263,170 @@ async def analyze_loan(
             )
         
         logger.info(f"  - Total extracted text length: {len(combined_text)} characters")
-        logger.info("  - Calling OpenAI for analysis...")
         
-        # Call OpenAI agent for analysis
+        # STEP 1: Fraud Detection (Rule-based ML)
+        logger.info("  - Running fraud detection...")
+        fraud_analysis = detect_fraud_signals(combined_text)
+        logger.info(f"    Fraud Score: {fraud_analysis['fraud_score']}/100")
+        logger.info(f"    Signals: {len(fraud_analysis['signals'])}")
+        
+        # STEP 2: Credit Scoring (Quantitative ML)
+        logger.info("  - Calculating credit score...")
+        credit_calculator = CreditScoreCalculator()
+        credit_analysis = credit_calculator.analyze(combined_text)
+        logger.info(f"    Credit Score: {credit_analysis['credit_score']}/850")
+        logger.info(f"    DSR: {credit_analysis['dsr']}%, LTV: {credit_analysis['ltv']}%")
+        
+        # STEP 3: Document Quality Assessment
+        logger.info("  - Assessing document quality...")
+        quality_analysis = calculate_document_quality_score(combined_text)
+        logger.info(f"    Quality Score: {quality_analysis['quality_score']}/100")
+        
+        # STEP 4: XGBoost Prediction (Quantitative ML Model)
+        logger.info("  - Running XGBoost risk prediction...")
+        try:
+            xgb_predictor = XGBoostLoanPredictor()
+            xgb_predictor.load_model()
+            xgb_prediction = xgb_predictor.predict_from_document_data(credit_analysis['extracted_data'])
+            logger.info(f"    XGBoost Approval Probability: {xgb_prediction['approval_probability']}%")
+            logger.info(f"    XGBoost Risk Level: {xgb_prediction['risk_level']}")
+        except Exception as e:
+            logger.warning(f"    XGBoost prediction failed: {e}, continuing with LLM-only analysis")
+            xgb_prediction = None
+        
+        # STEP 5A: ChromaDB RAG - Retrieve relevant BNM guidelines
+        logger.info("  - Retrieving BNM guidelines from ChromaDB (RAG)...")
+        rag_context = ""
+        try:
+            from app.chromadb_rag import get_rag_instance
+            rag = get_rag_instance()
+            rag_context = rag.get_bnm_context_for_loan(
+                loan_type=loan_type,
+                banking_system=banking_system,
+                customer_type=customer_type
+            )
+            logger.info(f"    Retrieved {len(rag_context)} characters of BNM context")
+        except Exception as e:
+            logger.warning(f"    ChromaDB RAG failed: {e}, continuing without RAG")
+            rag_context = ""
+        
+        # STEP 5B: LLM Analysis (GPT-4o with RAG)
+        logger.info("  - Calling OpenAI GPT-4o for comprehensive analysis (RAG-enhanced)...")
         analysis_result = await analyze_with_openai(
             extracted_text=combined_text,
             banking_system=banking_system,
             loan_type=loan_type,
-            customer_type=customer_type
+            customer_type=customer_type,
+            rag_context=rag_context
         )
         
-        logger.info("  - Analysis complete!")
+        # STEP 6: Hybrid Fusion (70% XGBoost + 30% LLM)
+        logger.info("  - Applying hybrid fusion with weighted scoring...")
+        
+        # Apply 70/30 fusion if XGBoost is available
+        if xgb_prediction:
+            # Convert LLM risk level to probability score
+            llm_risk_level = analysis_result["risk_analysis"]["risk_level"]
+            llm_approval_proba = {
+                "LOW": 85,
+                "LOW-MEDIUM": 70,
+                "MEDIUM": 55,
+                "MEDIUM-HIGH": 40,
+                "HIGH": 20
+            }.get(llm_risk_level, 50)
+            
+            # Weighted fusion: 70% XGBoost, 30% LLM
+            xgb_weight = 0.70
+            llm_weight = 0.30
+            
+            fused_approval_probability = (
+                xgb_weight * xgb_prediction['approval_probability'] +
+                llm_weight * llm_approval_proba
+            )
+            
+            # Determine fused risk level
+            if fused_approval_probability >= 75:
+                fused_risk_level = "LOW"
+                fused_recommendation = "APPROVED - Strong candidate"
+            elif fused_approval_probability >= 60:
+                fused_risk_level = "LOW-MEDIUM"
+                fused_recommendation = "APPROVED with conditions"
+            elif fused_approval_probability >= 45:
+                fused_risk_level = "MEDIUM"
+                fused_recommendation = "REVIEW REQUIRED - Manual assessment needed"
+            elif fused_approval_probability >= 30:
+                fused_risk_level = "MEDIUM-HIGH"
+                fused_recommendation = "DECLINE with reapplication option"
+            else:
+                fused_risk_level = "HIGH"
+                fused_recommendation = "DECLINE - High risk"
+            
+            # Update analysis result with fused scores
+            analysis_result["risk_analysis"]["risk_level"] = fused_risk_level
+            analysis_result["recommendation"] = fused_recommendation
+            
+            # Add fusion metrics
+            analysis_result["fusion_metrics"] = {
+                "xgboost_approval_probability": xgb_prediction['approval_probability'],
+                "xgboost_risk_level": xgb_prediction['risk_level'],
+                "llm_approval_probability": llm_approval_proba,
+                "llm_risk_level": llm_risk_level,
+                "fused_approval_probability": round(fused_approval_probability, 2),
+                "fused_risk_level": fused_risk_level,
+                "fusion_weights": f"XGBoost: {int(xgb_weight*100)}%, LLM: {int(llm_weight*100)}%",
+                "model_agreement": abs(xgb_prediction['approval_probability'] - llm_approval_proba) < 20
+            }
+            
+            logger.info(f"    Fusion Result: {fused_approval_probability:.2f}% approval ({fused_risk_level})")
+            logger.info(f"    Model Agreement: {'Yes' if analysis_result['fusion_metrics']['model_agreement'] else 'No - Review Recommended'}")
+        
+        # Enhance with fraud detection results
+        analysis_result["confidence_metrics"]["document_authenticity"] = fraud_analysis["authenticity_confidence"]
+        
+        # Add credit score insights
+        if credit_analysis["credit_score"] > 0:
+            analysis_result["credit_score"] = credit_analysis["credit_score"]
+            analysis_result["ml_risk_category"] = credit_analysis["risk_category"]
+            analysis_result["quantitative_metrics"] = {
+                "dsr": credit_analysis["dsr"],
+                "ltv": credit_analysis["ltv"],
+                "extracted_income": credit_analysis["extracted_data"]["monthly_income"],
+                "extracted_debt": credit_analysis["extracted_data"]["monthly_debt"]
+            }
+        
+        # Add XGBoost insights as finding if available
+        if xgb_prediction:
+            xgb_finding = {
+                "category": "XGBOOST ML MODEL",
+                "title": f"{xgb_prediction['risk_level']} Risk - {xgb_prediction['recommendation']}",
+                "description": f"Machine learning model trained on 24,000 historical loans predicts {xgb_prediction['approval_probability']}% approval probability with {xgb_prediction['model_confidence']}% confidence. XGBoost analysis based on quantitative features (income, credit score, DTI, employment).",
+                "keywords": ["XGBoost", "Machine Learning", "Quantitative Analysis", "Predictive Model"],
+                "status": "positive" if xgb_prediction['approval_probability'] >= 60 else "warning"
+            }
+            analysis_result["findings"].insert(0, xgb_finding)
+        
+        # Add fraud signals as findings if any
+        if fraud_analysis["total_signals"] > 0 and fraud_analysis["fraud_score"] > 25:
+            fraud_finding = {
+                "category": "FRAUD DETECTION",
+                "title": f"{fraud_analysis['risk_level']} - Document Authenticity Alert",
+                "description": f"Automated fraud detection identified {fraud_analysis['total_signals']} potential issues: {', '.join(fraud_analysis['signals'][:3])}. Recommend manual verification.",
+                "keywords": ["Fraud Detection", "Document Verification", "Risk Alert"],
+                "status": "warning"
+            }
+            analysis_result["findings"].insert(0, fraud_finding)
+        
+        # Add document quality finding
+        quality_finding = {
+            "category": "DOCUMENT QUALITY",
+            "title": f"Document Quality Score: {quality_analysis['quality_score']}/100",
+            "description": f"Document completeness analysis: {quality_analysis['word_count']} words, {quality_analysis['currency_mentions']} financial data points, {quality_analysis['completeness']} coverage. Numerical density: {quality_analysis['numerical_density']}%",
+            "keywords": ["Document Quality", "Completeness", "Data Density"],
+            "status": "positive" if quality_analysis['quality_score'] >= 70 else "warning"
+        }
+        analysis_result["findings"].append(quality_finding)
+        
+        logger.info("  - Analysis complete with ML enhancements!")
         
         # Build response matching frontend expectations
         response = AnalysisResponse(

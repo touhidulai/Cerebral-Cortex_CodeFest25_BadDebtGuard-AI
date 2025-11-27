@@ -18,23 +18,32 @@ async def analyze_with_openai(
     extracted_text: str,
     banking_system: str,
     loan_type: str,
-    customer_type: str
+    customer_type: str,
+    rag_context: str = ""
 ) -> Dict:
     """
     Call OpenAI's GPT model to analyze loan documents using the Cerebral Cortex agent logic
+    Enhanced with RAG (Retrieval-Augmented Generation) using ChromaDB
     
     Args:
         extracted_text: Combined text from all uploaded documents
         banking_system: conventional or islamic
         loan_type: home, car, personal, or business
         customer_type: salaried, rental, small-business, or large-business
+        rag_context: Retrieved BNM guidelines from ChromaDB (optional)
         
     Returns:
         Dict containing structured analysis results matching frontend expectations
     """
     
     # Build the comprehensive prompt for the Credit Risk Intelligence agent
-    prompt = f"""You are "Cerebral Cortex," an advanced AI credit risk engine purpose-built for the Malaysian banking ecosystem. 
+    prompt = f"""You are "Cerebral Cortex," an advanced AI credit risk engine purpose-built for the Malaysian banking ecosystem.
+
+{rag_context if rag_context else ""}
+
+"""
+    
+    prompt += f"""You are "Cerebral Cortex," an advanced AI credit risk engine purpose-built for the Malaysian banking ecosystem. 
 
 CONTEXT:
 - Banking System: {banking_system}
